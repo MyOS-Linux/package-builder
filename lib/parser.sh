@@ -30,7 +30,7 @@ parse_package_list() {
 
   local lineno=0 errors=0
   while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
-    (( lineno++ ))
+    lineno=$(( lineno + 1 ))
     # Strip inline comments, leading/trailing whitespace
     local line
     line="$(echo "$raw_line" | sed 's/#.*//' | xargs)"
@@ -73,8 +73,8 @@ parse_package_list() {
       fi
     done
 
-    (( token_errors > 0 )) && { (( errors++ )); continue; }
-    [[ ${#modes[@]} -eq 0 ]] && { log_error "Line $lineno: '$name' has no valid mode."; (( errors++ )); continue; }
+    [[ "$token_errors" -gt 0 ]] && { errors=$(( errors + 1 )); continue; }
+    [[ ${#modes[@]} -eq 0 ]] && { log_error "Line $lineno: '$name' has no valid mode."; errors=$(( errors + 1 )); continue; }
 
     PKG_MODES["$name"]="${modes[*]}"
     # shellcheck disable=SC2034  # consumed by package-builder main script
@@ -82,7 +82,7 @@ parse_package_list() {
     PKG_ORDER+=("$name")
   done < "$file"
 
-  (( errors == 0 )) || { log_error "$errors error(s) in $file — aborting."; return 1; }
+  [[ "$errors" -eq 0 ]] || { log_error "$errors error(s) in $file — aborting."; return 1; }
   [[ ${#PKG_ORDER[@]} -gt 0 ]] || { log_error "No packages defined in $file."; return 1; }
   return 0
 }

@@ -63,8 +63,8 @@ run_build_container() {
   local run_flags=(
     --name "$cname"
     --rm                          # auto-remove on exit
-    -v "${script_dir}:/builder:ro"
-    -v "${work_dir}:/work"
+    -v "${script_dir}:/builder:ro,z"
+    -v "${work_dir}:/work:z"
     -e "PKG_NAME=$pkg"
     -e "PKG_MODE=$mode"
     -e "VERBOSE=${VERBOSE:-0}"

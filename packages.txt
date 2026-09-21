@@ -4,7 +4,5 @@
 # Modes : fat  thin
 # Flags : hidden
 
-firefox fat
-nnn thin hidden
-mc fat thin
-kwrite thin
+firefox     fat
+
