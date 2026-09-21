@@ -1,0 +1,10 @@
+# packages.txt — MyOS application build definitions
+#
+# Format: <package-name> <mode> [mode...] [flags...]
+# Modes : fat  thin
+# Flags : hidden
+
+firefox fat
+nnn thin hidden
+mc fat thin
+kwrite thin

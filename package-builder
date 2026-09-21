@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# package-builder — build Arch packages into MyOS .app bundles
+set -Eeuo pipefail
+
+# ── Resolve script directory ──────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Source libraries ──────────────────────────────────────────────────────────
+# shellcheck source=lib/logging.sh
+source "${SCRIPT_DIR}/lib/logging.sh"
+# shellcheck source=lib/parser.sh
+source "${SCRIPT_DIR}/lib/parser.sh"
+# shellcheck source=lib/cli.sh
+source "${SCRIPT_DIR}/lib/cli.sh"
+# shellcheck source=lib/container.sh
+source "${SCRIPT_DIR}/lib/container.sh"
+# shellcheck source=lib/appimage.sh
+source "${SCRIPT_DIR}/lib/appimage.sh"
+# shellcheck source=lib/desktop.sh
+source "${SCRIPT_DIR}/lib/desktop.sh"
+# shellcheck source=lib/builder.sh
+source "${SCRIPT_DIR}/lib/builder.sh"
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+PACKAGE_LIST="${PACKAGE_LIST:-${SCRIPT_DIR}/packages.txt}"
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+ARCH_IMAGE="${ARCH_IMAGE:-archlinux:latest}"
+
+BUILD_DIR="${SCRIPT_DIR}/build"
+BUILD_ARTIFACTS_DIR="${BUILD_DIR}/artifacts"
+BUILD_LOGS_DIR="${BUILD_DIR}/logs"
+BUILD_WORK_DIR="${BUILD_DIR}/work"
+
+export BUILD_ARTIFACTS_DIR BUILD_LOGS_DIR BUILD_WORK_DIR
+export CONTAINER_RUNTIME ARCH_IMAGE
+
+# ── Parse CLI arguments ───────────────────────────────────────────────────────
+parse_args "$@"
+export DRY_RUN FORCE VERBOSE
+
+# ── Register container cleanup trap ──────────────────────────────────────────
+register_container_cleanup
+
+# ── Validate environment ──────────────────────────────────────────────────────
+check_runtime
+
+# ── Load package definitions ──────────────────────────────────────────────────
+parse_package_list "$PACKAGE_LIST"
+
+# ── Determine which packages to build ────────────────────────────────────────
+declare -a BUILD_TARGETS=()
+
+if [[ -z "$TARGET_PKG" ]]; then
+  # Interactive mode
+  mapfile -t BUILD_TARGETS < <(fzf_select_packages) || exit 0
+
+elif [[ "$TARGET_PKG" == "all" ]]; then
+  BUILD_TARGETS=("${PKG_ORDER[@]}")
+
+else
+  # Single named package
+  if [[ ! -v PKG_MODES["$TARGET_PKG"] ]]; then
+    log_error "Package '$TARGET_PKG' is not defined in $PACKAGE_LIST."
+    exit 1
+  fi
+  BUILD_TARGETS=("$TARGET_PKG")
+fi
+
+[[ ${#BUILD_TARGETS[@]} -gt 0 ]] || { log_error "No packages to build."; exit 1; }
+
+# ── Build loop ────────────────────────────────────────────────────────────────
+overall_exit=0
+
+for pkg in "${BUILD_TARGETS[@]}"; do
+  read -ra modes <<< "${PKG_MODES[$pkg]}"
+  # PKG_FLAGS values are plain strings (space-separated flag list)
+  pkg_flags="${PKG_FLAGS[$pkg]:-}"
+  multi_mode=$(( ${#modes[@]} > 1 ? 1 : 0 ))
+
+  for mode in "${modes[@]}"; do
+    build_package "$pkg" "$mode" "$pkg_flags" "$multi_mode" || overall_exit=1
+  done
+done
+
+if (( overall_exit != 0 )); then
+  log_error "One or more builds failed."
+  exit 1
+fi
+
+log_ok "All done."
